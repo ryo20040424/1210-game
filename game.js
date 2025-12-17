@@ -84,15 +84,19 @@ class Bullet {
 }
 
 class EnemyBullet {
-    constructor(x, y) {
+    constructor(x, y, speedY = 0) {
         this.x = x;
         this.y = y;
         this.width = 10;
         this.height = 10;
-        this.speed = -5 - (bossLevel * 0.5); // Boss bullets get faster
+        this.speedX = -5;
+        this.speedY = speedY;
     }
 
-    update() { this.x += this.speed; }
+    update() { 
+        this.x += this.speedX;
+        this.y += this.speedY;
+    }
 
     draw() {
         ctx.fillStyle = 'magenta';
@@ -161,14 +165,13 @@ class Boss {
         this.y = canvas.height / 2 - 50;
         this.width = 100;
         this.height = 100;
-        this.speedX = 2 + (bossLevel * 0.5); // Boss gets faster
-        this.speedY = 2 + (bossLevel * 0.5); // Boss gets faster
-        this.hp = 100 + (bossLevel * 20); // Boss HP increases
+        this.speedX = 2; // Constant speed
+        this.speedY = 2; // Constant speed
+        this.hp = 150;   // Constant HP
         this.maxHp = this.hp;
-        this.introState = 'entering'; // 'entering', 'active'
+        this.introState = 'entering';
         this.shootCooldown = 0;
-        this.shootInterval = 90 - (bossLevel * 5); // Boss shoots faster
-        if (this.shootInterval < 30) this.shootInterval = 30; // Min shoot interval
+        this.shootInterval = 90; // Constant shoot interval
     }
 
     update() {
@@ -204,7 +207,18 @@ class Boss {
     
     shoot() {
         const bulletY = this.y + this.height / 2;
-        enemyBullets.push(new EnemyBullet(this.x, bulletY));
+        const numBullets = bossLevel; // Number of bullets equals current boss level
+
+        if (numBullets === 1) {
+            enemyBullets.push(new EnemyBullet(this.x, bulletY, 0));
+        } else {
+            const spread = 2; // How much vertical spread
+            for (let i = 0; i < numBullets; i++) {
+                // Calculate vertical speed for each bullet to create a fan effect
+                const speedY = (i - (numBullets - 1) / 2) * spread;
+                enemyBullets.push(new EnemyBullet(this.x, bulletY, speedY));
+            }
+        }
     }
 
     takeDamage(amount) {
