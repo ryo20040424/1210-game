@@ -8,7 +8,8 @@ let keys = {};
 let gameMode = 'normal'; // 'normal', 'boss_intro', 'boss_battle', 'boss_outro'
 let scoreSinceLastBoss = 0;
 let boss = null;
-let celebrationParticles = [];
+let outroHue = 0;
+let outroTimer = 0;
 
 // --- Player ---
 class Player {
@@ -55,7 +56,7 @@ class Player {
     }
 }
 
-// --- Bullet ---
+// --- Bullets ---
 class Bullet {
     constructor(x, y, color) {
         this.x = x;
@@ -66,15 +67,31 @@ class Bullet {
         this.color = color;
     }
 
-    update() {
-        this.x += this.speed;
-    }
+    update() { this.x += this.speed; }
 
     draw() {
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y - this.height / 2, this.width, this.height);
     }
 }
+
+class EnemyBullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 10;
+        this.height = 10;
+        this.speed = -5;
+    }
+
+    update() { this.x += this.speed; }
+
+    draw() {
+        ctx.fillStyle = 'magenta';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+}
+
 
 // --- Enemies ---
 class Enemy {
@@ -86,9 +103,7 @@ class Enemy {
         this.speedX = Math.random() * 2 + 1;
     }
 
-    update() {
-        this.x -= this.speedX;
-    }
+    update() { this.x -= this.speedX; }
 
     draw() {
         ctx.fillStyle = this.color;
@@ -143,6 +158,7 @@ class Boss {
         this.hp = 100;
         this.maxHp = 100;
         this.introState = 'entering'; // 'entering', 'active'
+        this.shootCooldown = 0;
     }
 
     update() {
@@ -157,14 +173,19 @@ class Boss {
             if (this.y <= 0 || this.y >= canvas.height - this.height) {
                 this.speedY *= -1;
             }
+            // Boss attack logic
+            if (this.shootCooldown <= 0) {
+                this.shoot();
+                this.shootCooldown = 90; // 90 frames = 1.5 seconds at 60fps
+            } else {
+                this.shootCooldown--;
+            }
         }
     }
 
     draw() {
-        // Boss body
         ctx.fillStyle = 'purple';
         ctx.fillRect(this.x, this.y, this.width, this.height);
-        // Health bar
         const hpBarWidth = (this.hp / this.maxHp) * this.width;
         ctx.fillStyle = 'red';
         ctx.fillRect(this.x, this.y - 15, this.width, 10);
@@ -172,58 +193,20 @@ class Boss {
         ctx.fillRect(this.x, this.y - 15, hpBarWidth, 10);
     }
     
+    shoot() {
+        const bulletY = this.y + this.height / 2;
+        enemyBullets.push(new EnemyBullet(this.x, bulletY));
+    }
+
     takeDamage(amount) {
         this.hp -= amount;
         if (this.hp <= 0) {
             this.hp = 0;
-            return true; // Is defeated
+            return true;
         }
         return false;
     }
 }
-
-// --- Pachinko Particle for Celebration ---
-class PachinkoParticle {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = Math.random() * 5 + 2;
-        this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
-        this.vx = (Math.random() - 0.5) * 20;
-        this.vy = (Math.random() - 1.5) * 15;
-        this.gravity = 0.4;
-        this.bounce = 0.8;
-        this.alpha = 1;
-    }
-
-    update() {
-        this.vy += this.gravity;
-        this.x += this.vx;
-        this.y += this.vy;
-
-        if (this.x - this.radius <= 0 || this.x + this.radius >= canvas.width) {
-            this.vx *= -this.bounce;
-        }
-        if (this.y + this.radius >= canvas.height) {
-            this.y = canvas.height - this.radius;
-            this.vy *= -this.bounce;
-        }
-        if (this.alpha > 0) {
-            this.alpha -= 0.005;
-        }
-    }
-
-    draw() {
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-}
-
 
 // --- Background Stars ---
 class Star {
@@ -246,10 +229,10 @@ class Star {
     }
 }
 
-
 // --- Game Objects Arrays ---
 const player = new Player();
 const bullets = [];
+const enemyBullets = [];
 const enemies = [];
 const stars = [];
 
@@ -284,7 +267,6 @@ function handleCollisions() {
         for (let j = enemies.length - 1; j >= 0; j--) {
             const b = bullets[i];
             const e = enemies[j];
-
             if (b && e && b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
                 enemies.splice(j, 1);
                 bullets.splice(i, 1);
@@ -311,42 +293,46 @@ function handleCollisions() {
         }
     }
 
-    // Player vs Enemies
+    // Player vs Dangers
     if (gameMode === 'normal' || gameMode === 'boss_battle') {
+        // Player vs Enemies
         for (let i = enemies.length - 1; i >= 0; i--) {
-            const e = enemies[i];
-            if (player.x < e.x + e.width && player.x + player.width > e.x && player.y < e.y + e.height && player.y + player.height > e.y) {
+            if (player.x < enemies[i].x + enemies[i].width && player.x + player.width > enemies[i].x && player.y < enemies[i].y + enemies[i].height && player.y + player.height > enemies[i].y) {
                 gameOver = true;
+                return;
             }
         }
-         // Player vs Boss
+        // Player vs Boss
         if (boss && gameMode === 'boss_battle' && player.x < boss.x + boss.width && player.x + player.width > boss.x && player.y < boss.y + boss.height && player.y + player.height > boss.y) {
              gameOver = true;
+             return;
+        }
+        // Player vs Enemy Bullets
+        for (let i = enemyBullets.length - 1; i >= 0; i--) {
+            const eb = enemyBullets[i];
+            if (player.x < eb.x + eb.width && player.x + player.width > eb.x && player.y < eb.y + eb.height && player.y + player.height > eb.y) {
+                gameOver = true;
+                return;
+            }
         }
     }
 }
 
 function startBossBattle() {
     gameMode = 'boss_intro';
-    enemies.length = 0; // Clear normal enemies
+    enemies.length = 0;
     boss = new Boss();
     setTimeout(() => {
         gameMode = 'boss_battle';
-    }, 2000); // 2 second intro
+    }, 2000);
 }
 
 function startBossCelebration() {
     gameMode = 'boss_outro';
-    for (let i = 0; i < 300; i++) {
-        celebrationParticles.push(new PachinkoParticle(boss.x + boss.width / 2, boss.y + boss.height / 2));
-    }
+    outroTimer = 0;
     boss = null;
-    setTimeout(() => {
-        gameMode = 'normal';
-        celebrationParticles.length = 0;
-    }, 5000); // 5 second celebration
+    enemyBullets.length = 0;
 }
-
 
 // --- Game Loop ---
 function animate() {
@@ -362,10 +348,8 @@ function animate() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Always draw background
     stars.forEach(s => { s.update(); s.draw(); });
 
-    // Handle different game modes
     switch (gameMode) {
         case 'normal':
         case 'boss_battle':
@@ -374,18 +358,19 @@ function animate() {
             player.draw();
 
             bullets.forEach((b, index) => {
-                b.update();
-                b.draw();
+                b.update(); b.draw();
                 if (b.x > canvas.width) bullets.splice(index, 1);
             });
+            
+            enemyBullets.forEach((eb, index) => {
+                eb.update(); eb.draw();
+                if (eb.x < 0) enemyBullets.splice(index, 1);
+            });
 
-            if (gameMode === 'normal') {
-                handleEnemies();
-            }
+            if (gameMode === 'normal') handleEnemies();
              
             enemies.forEach((e, index) => {
-                e.update();
-                e.draw();
+                e.update(); e.draw();
                 if (e.x < -e.width) enemies.splice(index, 1);
             });
 
@@ -396,7 +381,6 @@ function animate() {
 
             handleCollisions();
             
-            // Check for boss trigger
             if (scoreSinceLastBoss >= 100 && gameMode === 'normal') {
                 startBossBattle();
             }
@@ -404,15 +388,20 @@ function animate() {
 
         case 'boss_outro':
             player.draw(); // Keep player on screen
-            celebrationParticles.forEach((p, index) => {
-                p.update();
-                p.draw();
-                if (p.alpha <= 0) celebrationParticles.splice(index, 1);
-            });
+            
+            outroHue = (outroHue + 2) % 360;
+            ctx.font = "60px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillStyle = `hsl(${outroHue}, 100%, 60%)`;
+            ctx.fillText("ボスクリア！", canvas.width / 2, canvas.height / 2);
+
+            outroTimer++;
+            if (outroTimer > 180) { // 3 seconds
+                gameMode = 'normal';
+            }
             break;
     }
 
-    // Draw Score
     ctx.fillStyle = "white";
     ctx.font = "20px sans-serif";
     ctx.textAlign = "left";
@@ -425,18 +414,12 @@ function animate() {
         ctx.fillText("!! WARNING !!", canvas.width / 2, 50);
     }
 
-
     requestAnimationFrame(animate);
 }
 
 // --- Event Listeners ---
-window.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
-});
-window.addEventListener('keyup', (e) => {
-    keys[e.key] = false;
-});
-
+window.addEventListener('keydown', (e) => { keys[e.key] = true; });
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 init();
 animate();
