@@ -32,6 +32,12 @@ class Player {
         if (keys['ArrowDown'] && this.y < canvas.height - this.height) {
             this.y += this.speed;
         }
+        if (keys['ArrowLeft'] && this.x > 0) { // Added horizontal movement
+            this.x -= this.speed;
+        }
+        if (keys['ArrowRight'] && this.x < canvas.width - this.width) { // Added horizontal movement
+            this.x += this.speed;
+        }
         if (keys[' '] && this.shootCooldown <= 0) {
             this.shoot();
             this.shootCooldown = 10;
