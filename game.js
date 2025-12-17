@@ -148,6 +148,7 @@ function handleCollisions() {
                         gameMode = 'game_clear';
                         for (let k = 0; k < 200; k++) gameClearParticles.push(new GameClearParticle());
                     } else {
+                        scoreSinceLastBoss = 0; // Reset score for next boss
                         gameMode = 'normal'; // Go back to normal mode
                         boss = null;
                     }
