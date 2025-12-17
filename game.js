@@ -3,6 +3,7 @@ const ctx = canvas.getContext('2d');
 
 // --- Game State ---
 let score = 0;
+let lives = 3; // Initial lives
 let gameOver = false;
 let keys = {};
 let gameMode = 'normal'; // 'normal', 'boss_intro', 'boss_battle', 'boss_outro'
@@ -10,6 +11,7 @@ let scoreSinceLastBoss = 0;
 let boss = null;
 let outroHue = 0;
 let outroTimer = 0;
+let bossLevel = 1; // Tracks boss difficulty
 
 // --- Player ---
 class Player {
@@ -81,7 +83,7 @@ class EnemyBullet {
         this.y = y;
         this.width = 10;
         this.height = 10;
-        this.speed = -5;
+        this.speed = -5 - (bossLevel * 0.5); // Boss bullets get faster
     }
 
     update() { this.x += this.speed; }
@@ -153,12 +155,14 @@ class Boss {
         this.y = canvas.height / 2 - 50;
         this.width = 100;
         this.height = 100;
-        this.speedX = 2;
-        this.speedY = 2;
-        this.hp = 100;
-        this.maxHp = 100;
+        this.speedX = 2 + (bossLevel * 0.5); // Boss gets faster
+        this.speedY = 2 + (bossLevel * 0.5); // Boss gets faster
+        this.hp = 100 + (bossLevel * 20); // Boss HP increases
+        this.maxHp = this.hp;
         this.introState = 'entering'; // 'entering', 'active'
         this.shootCooldown = 0;
+        this.shootInterval = 90 - (bossLevel * 5); // Boss shoots faster
+        if (this.shootInterval < 30) this.shootInterval = 30; // Min shoot interval
     }
 
     update() {
@@ -173,10 +177,9 @@ class Boss {
             if (this.y <= 0 || this.y >= canvas.height - this.height) {
                 this.speedY *= -1;
             }
-            // Boss attack logic
             if (this.shootCooldown <= 0) {
                 this.shoot();
-                this.shootCooldown = 90; // 90 frames = 1.5 seconds at 60fps
+                this.shootCooldown = this.shootInterval;
             } else {
                 this.shootCooldown--;
             }
@@ -242,6 +245,20 @@ function init() {
     }
 }
 
+// Resets game state for a new round (after losing a life or defeating boss)
+function resetGameRound() {
+    player.x = 50;
+    player.y = canvas.height / 2;
+    bullets.length = 0;
+    enemyBullets.length = 0;
+    enemies.length = 0;
+    boss = null;
+    gameMode = 'normal';
+    scoreSinceLastBoss = 0;
+    outroTimer = 0;
+    enemyTimer = 0;
+}
+
 // --- Enemy Spawning ---
 let enemyTimer = 0;
 const enemyInterval = 70;
@@ -287,6 +304,7 @@ function handleCollisions() {
                  if (isDefeated) {
                     score += 500;
                     scoreSinceLastBoss = 0;
+                    bossLevel++; // Increase boss difficulty
                     startBossCelebration();
                 }
             }
@@ -294,26 +312,38 @@ function handleCollisions() {
     }
 
     // Player vs Dangers
-    if (gameMode === 'normal' || gameMode === 'boss_battle') {
-        // Player vs Enemies
-        for (let i = enemies.length - 1; i >= 0; i--) {
-            if (player.x < enemies[i].x + enemies[i].width && player.x + player.width > enemies[i].x && player.y < enemies[i].y + enemies[i].height && player.y + player.height > enemies[i].y) {
-                gameOver = true;
-                return;
-            }
+    // Check if player collides with anything
+    let playerHit = false;
+    // Player vs Enemies
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        if (player.x < enemies[i].x + enemies[i].width && player.x + player.width > enemies[i].x && player.y < enemies[i].y + enemies[i].height && player.y + player.height > enemies[i].y) {
+            playerHit = true;
+            enemies.splice(i, 1); // Remove enemy on collision
+            break;
         }
-        // Player vs Boss
-        if (boss && gameMode === 'boss_battle' && player.x < boss.x + boss.width && player.x + player.width > boss.x && player.y < boss.y + boss.height && player.y + player.height > boss.y) {
-             gameOver = true;
-             return;
-        }
-        // Player vs Enemy Bullets
+    }
+    // Player vs Boss
+    if (!playerHit && boss && gameMode === 'boss_battle' && player.x < boss.x + boss.width && player.x + player.width > boss.x && player.y < boss.y + boss.height && player.y + player.height > boss.y) {
+         playerHit = true;
+    }
+    // Player vs Enemy Bullets
+    if (!playerHit) {
         for (let i = enemyBullets.length - 1; i >= 0; i--) {
             const eb = enemyBullets[i];
             if (player.x < eb.x + eb.width && player.x + player.width > eb.x && player.y < eb.y + eb.height && player.y + player.height > eb.y) {
-                gameOver = true;
-                return;
+                playerHit = true;
+                enemyBullets.splice(i, 1); // Remove bullet on collision
+                break;
             }
+        }
+    }
+
+    if (playerHit) {
+        lives--;
+        if (lives <= 0) {
+            gameOver = true;
+        } else {
+            resetGameRound();
         }
     }
 }
@@ -332,6 +362,7 @@ function startBossCelebration() {
     outroTimer = 0;
     boss = null;
     enemyBullets.length = 0;
+    enemies.length = 0; // Clear any remaining normal enemies
 }
 
 // --- Game Loop ---
@@ -398,6 +429,7 @@ function animate() {
             outroTimer++;
             if (outroTimer > 180) { // 3 seconds
                 gameMode = 'normal';
+                resetGameRound(); // Reset the round state, but not lives or score
             }
             break;
     }
@@ -406,6 +438,7 @@ function animate() {
     ctx.font = "20px sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(`Score: ${score}`, 10, 25);
+    ctx.fillText(`Lives: ${lives}`, 10, 50); // Display lives
     
     if (gameMode === 'boss_intro' || gameMode === 'boss_battle') {
         ctx.font = "30px sans-serif";
