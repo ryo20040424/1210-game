@@ -249,8 +249,8 @@ function animate() {
 }
 
 // --- Event Listeners ---
-window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('keydown', (e) => { keys[e.key] = true; });
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 init();
 animate();
